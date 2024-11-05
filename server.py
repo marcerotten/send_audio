@@ -34,13 +34,10 @@ def audio_stream():
 
     try:
         for chunk in data_chunks:
-            if len(chunk) < CHUNK_SIZE:
-                # Rellena con ceros si es el último segmento y no tiene 5 segundos completos
-                chunk = np.pad(chunk, (0, CHUNK_SIZE - len(chunk)), 'constant')
-
             serialized_chunk = pickle.dumps(chunk)
             message = struct.pack("Q", len(serialized_chunk)) + serialized_chunk
             client_socket.sendall(message)
+            print(f"Enviando chunk de tamaño: {len(chunk)}")
 
             # Pausa de 5 segundos para simular tiempo real
             time.sleep(5)
