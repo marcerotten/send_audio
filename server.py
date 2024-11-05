@@ -1,12 +1,10 @@
-# This is server code to send video and audio frames over TCP
-
 import socket
-import threading, wave, pyaudio,pickle,struct
+import threading, wave, pickle, struct, time
 import numpy as np
 from scipy.io import wavfile
 
 host_name = socket.gethostname()
-host_ip = '127.0.0.1'  # socket.gethostbyname(host_name)
+host_ip = '127.0.0.1'
 print(host_ip)
 port = 9611
 
@@ -17,39 +15,41 @@ output_wav = "audios/demo_16bit.wav"
 # Conversión del archivo a 16 bits usando scipy
 fs, audio_data = wavfile.read(input_wav)
 if audio_data.dtype != np.int16:
-    audio_data = (audio_data * 32767).astype(np.int16)  # Convierte a 16 bits si es necesario
+    audio_data = (audio_data * 32767).astype(np.int16)
 
 # Guardar el archivo en formato de 16 bits
 wavfile.write(output_wav, fs, audio_data)
 
-# Función para transmitir el audio
 def audio_stream():
     server_socket = socket.socket()
     server_socket.bind((host_ip, (port - 1)))
     server_socket.listen(5)
     
-    CHUNK = 1024
-    wf = wave.open(output_wav, 'rb')  # Usa el archivo convertido de 16 bits
-    
-    p = pyaudio.PyAudio()
-    print('server listening at', (host_ip, (port - 1)))
-    
-    stream = p.open(format=p.get_format_from_width(wf.getsampwidth()),
-                    channels=wf.getnchannels(),
-                    rate=wf.getframerate(),
-                    input=True,
-                    frames_per_buffer=CHUNK)
-    
+    CHUNK_SIZE = fs * 5  # 5 segundos de audio en términos de número de muestras
+    data_chunks = [audio_data[i:i + CHUNK_SIZE] for i in range(0, len(audio_data), CHUNK_SIZE)]
+    print(f"Total chunks to send: {len(data_chunks)}")
+
     client_socket, addr = server_socket.accept()
-    
-    data = None
-    while True:
-        if client_socket:
-            while True:
-                data = wf.readframes(CHUNK)
-                a = pickle.dumps(data)
-                message = struct.pack("Q", len(a)) + a
-                client_socket.sendall(message)
+    print('Client connected:', addr)
+
+    try:
+        for chunk in data_chunks:
+            if len(chunk) < CHUNK_SIZE:
+                # Rellena con ceros si es el último segmento y no tiene 5 segundos completos
+                chunk = np.pad(chunk, (0, CHUNK_SIZE - len(chunk)), 'constant')
+
+            serialized_chunk = pickle.dumps(chunk)
+            message = struct.pack("Q", len(serialized_chunk)) + serialized_chunk
+            client_socket.sendall(message)
+
+            # Pausa de 5 segundos para simular tiempo real
+            time.sleep(5)
+
+    except Exception as e:
+        print("Error en la transmisión:", e)
+    finally:
+        client_socket.close()
+        print("Transmisión finalizada.")
 
 # Ejecuta la transmisión en un hilo
 t1 = threading.Thread(target=audio_stream, args=())
