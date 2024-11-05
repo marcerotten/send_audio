@@ -37,7 +37,7 @@ def audio_stream():
 
     try:
         # Enviar parámetros iniciales al cliente
-        initial_message = struct.pack("II", fs, channels)  # envía freq y número de canales
+        initial_message = struct.pack("III", fs, channels,len(data_chunks))  # envía freq y número de canales
         client_socket.sendall(initial_message)
 
         for chunk in data_chunks:
