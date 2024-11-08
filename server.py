@@ -2,12 +2,17 @@ import socket
 import threading, pickle, struct, time
 import numpy as np
 from scipy.io import wavfile
+import os
 
 host_ip = '127.0.0.1'
 port = 9611
 
 # Ruta del archivo WAV
 input_wav = "audios/demo.wav"
+
+# Obtener sólo nombre del archivo y sin extensión
+name_wav = os.path.splitext(os.path.basename(input_wav))[0]
+print('Nombre del archivo:', name_wav)
 
 # Lectura del archivo WAV
 fs, audio_data = wavfile.read(input_wav)
@@ -36,9 +41,16 @@ def audio_stream():
     print('Client connected:', addr)
 
     try:
+        # Convierte el nombre del archivo en bytes
+        name_wav_bytes = name_wav.encode('utf-8')
+        name_wav_length = len(name_wav_bytes)
+
         # Enviar parámetros iniciales al cliente
-        initial_message = struct.pack("III", fs, channels,len(data_chunks))  # envía freq y número de canales
+        initial_message = struct.pack("IIII", fs, channels,len(data_chunks), name_wav_length)  # envía freq y número de canales
         client_socket.sendall(initial_message)
+
+        # Enviar el nombre del archivo
+        client_socket.sendall(name_wav_bytes)
 
         for chunk in data_chunks:
             serialized_chunk = pickle.dumps(chunk)
