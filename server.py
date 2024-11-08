@@ -1,56 +1,57 @@
-# This is server code to send video and audio frames over TCP
-
 import socket
-import threading, wave, pyaudio,pickle,struct
+import threading, pickle, struct, time
 import numpy as np
 from scipy.io import wavfile
 
-host_name = socket.gethostname()
-host_ip = '127.0.0.1'  # socket.gethostbyname(host_name)
-print(host_ip)
+host_ip = '127.0.0.1'
 port = 9611
 
-# Ruta del archivo original y del archivo convertido
+# Ruta del archivo WAV
 input_wav = "audios/demo.wav"
-output_wav = "audios/demo_16bit.wav"
 
-# Conversión del archivo a 16 bits usando scipy
+# Lectura del archivo WAV
 fs, audio_data = wavfile.read(input_wav)
+
+# Si el archivo no está en 16 bits, conviértelo
 if audio_data.dtype != np.int16:
-    audio_data = (audio_data * 32767).astype(np.int16)  # Convierte a 16 bits si es necesario
+    audio_data = (audio_data / np.max(np.abs(audio_data))) * 32767
+    audio_data = audio_data.astype(np.int16)
 
-# Guardar el archivo en formato de 16 bits
-wavfile.write(output_wav, fs, audio_data)
+# Obtener número de canales
+# Si es mono, el shape no tendrá dos dimensiones, así que lo manejamos
+channels = audio_data.shape[1] if audio_data.ndim > 1 else 1
 
-# Función para transmitir el audio
+SECONDS_PER_CHUNK = 5
+CHUNK_SIZE = fs * SECONDS_PER_CHUNK
+
 def audio_stream():
-    server_socket = socket.socket()
-    server_socket.bind((host_ip, (port - 1)))
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.bind((host_ip, port))
     server_socket.listen(5)
-    
-    CHUNK = 1024
-    wf = wave.open(output_wav, 'rb')  # Usa el archivo convertido de 16 bits
-    
-    p = pyaudio.PyAudio()
-    print('server listening at', (host_ip, (port - 1)))
-    
-    stream = p.open(format=p.get_format_from_width(wf.getsampwidth()),
-                    channels=wf.getnchannels(),
-                    rate=wf.getframerate(),
-                    input=True,
-                    frames_per_buffer=CHUNK)
-    
-    client_socket, addr = server_socket.accept()
-    
-    data = None
-    while True:
-        if client_socket:
-            while True:
-                data = wf.readframes(CHUNK)
-                a = pickle.dumps(data)
-                message = struct.pack("Q", len(a)) + a
-                client_socket.sendall(message)
 
-# Ejecuta la transmisión en un hilo
-t1 = threading.Thread(target=audio_stream, args=())
+    data_chunks = [audio_data[i:i + CHUNK_SIZE] for i in range(0, len(audio_data), CHUNK_SIZE)]
+    print(f"Total chunks to send: {len(data_chunks)}")
+
+    client_socket, addr = server_socket.accept()
+    print('Client connected:', addr)
+
+    try:
+        # Enviar parámetros iniciales al cliente
+        initial_message = struct.pack("III", fs, channels,len(data_chunks))  # envía freq y número de canales
+        client_socket.sendall(initial_message)
+
+        for chunk in data_chunks:
+            serialized_chunk = pickle.dumps(chunk)
+            message = struct.pack("Q", len(serialized_chunk)) + serialized_chunk
+            client_socket.sendall(message)
+            print(f"Enviando chunk de tamaño: {len(chunk)} muestras")
+            time.sleep(SECONDS_PER_CHUNK)
+
+    except Exception as e:
+        print("Error en la transmisión:", e)
+    finally:
+        client_socket.close()
+        print("Transmisión finalizada.")
+
+t1 = threading.Thread(target=audio_stream)
 t1.start()
