@@ -8,7 +8,7 @@ host_ip = '127.0.0.1'
 port = 9611
 
 # Ruta del archivo WAV
-input_wav = "audios/demo.wav"
+input_wav = "audios/demo9.wav"
 
 # Obtener sólo nombre del archivo y sin extensión
 name_wav = os.path.splitext(os.path.basename(input_wav))[0]
